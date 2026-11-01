@@ -1,0 +1,27 @@
+let a = 2;
+
+proc print(str: String) {
+    /*
+        The printing
+    */
+}
+
+proc "c" very_cool_c_function(a: int, b: int) -> int {
+    return a + b;
+}
+
+proc "bad" bad_function(meow: bool) {}
+
+proc main() {
+    // still have to define the function call statement in the grammar
+    print("asd\n");
+
+    let condition = false;
+
+    if condition && true {
+        let c = very_cool_function(1, 2);
+        print("True!");
+    }
+
+    let b: int = 10_000;
+}

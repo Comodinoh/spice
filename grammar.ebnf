@@ -1,0 +1,106 @@
+DIGIT = "0".."9";
+BINARY_DIGIT = "0" | "1";
+HEXADECIMAL_DIGIT = DIGIT | "a".."f" | "A".."F";
+
+LETTER = "a".."z" | "A".."Z" | "_";
+
+ESCAPE_SEQUENCE = "\" ( "a" | "b" | "e" | "f" | "n" | "r" | "t" | "v"
+                      | "\\" | '"' | "'" );
+
+CHAR = ANY_CHAR - ( "'" | "\" | NEWLINE );
+STRING_CHAR = ANY_CHAR - ( '"' | "\" | NEWLINE ); 
+
+/* Actual Tokens */
+
+IDENTIFIER = ( LETTER { LETTER | DIGIT } ) - KEYWORD;
+
+INTEGER_LITERAL = DECIMAL_LITERAL | BINARY_LITERAL | HEXADECIMAL_LITERAL;
+
+DECIMAL_LITERAL = DIGIT { [ "_" ] DIGIT };
+BINARY_LITERAL = "0b" BINARY_DIGIT { [ "_" ] BINARY_DIGIT };
+HEXADECIMAL_LITERAL = "0x" HEXADECIMAL_DIGIT { [ "_" ] HEXADECIMAL_DIGIT };
+
+FLOAT_LITERAL = DIGIT {DIGIT} "." DIGIT {DIGIT};
+
+BOOLEAN_LITERAL = TRUE | FALSE;
+
+CHAR_LITERAL = "'" ( CHAR | ESCAPE_SEQUENCE ) "'";
+STRING_LITERAL = '"' { STRING_CHAR | ESCAPE_SEQUENCE } '"';
+
+KEYWORD = LET | ELSE | IF | PROC | FOR | RETURN | TRUE | FALSE;
+
+LET = "let";
+IF = "if";
+ELSE = "else";
+PROC = "proc";
+FOR = "for";
+TRUE = "true";
+FALSE = "false";
+RETURN = "return";
+CALLING_CONVENTION = C_CALLING_CONVENTION;
+C_CALLING_CONVENTION = "c";
+
+ADDITION = "+";
+SUBTRACTION = "-";
+MULTIPLICATION = "*";
+LOGICAL_AND = "&&";
+LOGICAL_OR = "||";
+GREATER = ">";
+GREATER_EQUAL = ">=";
+LESSER = "<";
+LESSER_EQUAL = "<=";
+EQUAL = "==";
+NOT_EQUAL = "!=";
+NOT = "!";
+
+COMMENT = "//" { ANY_CHAR - NEWLINE } NEWLINE
+          | "/*" { ANY_CHAR | COMMENT } "*/";
+
+/* Productions */
+
+Start = {ProcedureDeclaration | ValueDeclaration};
+
+Literal = INTEGER_LITERAL | STRING_LITERAL | FLOAT_LITERAL | CHAR_LITERAL | BOOLEAN_LITERAL ;
+
+ValueDeclaration = LET IDENTIFIER [":" Type] ["=" Expression] ";";
+ProcedureDeclaration = PROC ['"' CALLING_CONVENTION '"'] IDENTIFIER "(" [TypedParameterList] ")" ["->" Type] "{" {Statement} "}";
+
+TypedParameterList = IDENTIFIER ":" Type {"," IDENTIFIER ":" Type};
+
+Expression = OrExpression;
+
+OrExpression = AndExpression {LOGICAL_OR AndExpression};
+AndExpression = EqualityExpression {LOGICAL_AND EqualityExpression};
+EqualityExpression = ComparisonExpression { ( EQUAL | NOT_EQUAL ) ComparisonExpression };
+ComparisonExpression = AdditionExpression { ( GREATER | GREATER_EQUAL | LESSER | LESSER_EQUAL ) AdditionExpression };
+AdditionExpression = MultiplicationExpression { (ADDITION | SUBTRACTION) MultiplicationExpression };
+MultiplicationExpression = UnaryExpression { MULTIPLICATION UnaryExpression };
+UnaryExpression = (NOT | SUBTRACTION) UnaryExpression | PrimaryExpression;
+CallExpression = IDENTIFIER "(" [Expression {"," Expression}] ")";
+PrimaryExpression = Literal | IDENTIFIER | "(" Expression ")" | CallExpression;
+
+Assignment = IDENTIFIER "=" Expression ";";
+
+Statement = ValueDeclaration
+            | Assignment
+            | IfStatement
+            | ReturnStatement
+            | ForStatement
+            | CallStatement
+            | ";";
+
+ReturnStatement = RETURN [Expression] ";";
+
+CallStatement = CallExpression ";";
+
+IfStatement = IF Expression 
+                "{" {Statement } "}"
+              {ELSE IF Expression
+                "{" {Statement } "}"}
+              [ELSE 
+                "{" {Statement } "}"];
+ForStatement = FOR [Expression] "{" {Statement} "}";
+
+Type = TypeName ;
+
+TypeName = IDENTIFIER ;
