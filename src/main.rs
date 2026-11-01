@@ -39,6 +39,7 @@ pub enum TokenKind {
     OpenBracket,
     ClosedBracket,
     Semicolon,
+    Comma,
     OpenParen,
     ClosedParen,
     Identifier,
@@ -77,7 +78,8 @@ trait Keyword {
 }
 
 trait Identifier {
-    fn is_identifier(&self) -> bool;
+    fn is_identifier_first(&self) -> bool;
+    fn is_identifier_continue(&self) -> bool;
 }
 
 trait Number {
@@ -87,7 +89,7 @@ trait Number {
 impl Number for str {
     fn is_number(&self) -> bool {
         for c in self.chars() {
-            if !c.is_ascii_digit() {
+            if !c.is_ascii_digit() && c != '_' {
                 return false;
             }
         }
@@ -136,10 +138,12 @@ impl Keyword for str {
 }
 
 impl Identifier for char {
-    fn is_identifier(&self) -> bool {
-        (*self >= 'a' && *self <= 'z')
-        || 
-        (*self >= 'A' && *self <= 'Z')
+    fn is_identifier_first(&self) -> bool {
+        matches!(self, 'a'..'z' | 'A'..'Z' | '_')
+    }
+
+    fn is_identifier_continue(&self) -> bool {
+        matches!(self, 'a'..='z' | 'A'..='Z' | '_' | '0'..='9')
     }
 }
 
@@ -209,6 +213,7 @@ impl<'a> Lexer<'a> {
             self.seek(1);
         }
 
+
         Some(&self.current_source[start..end])
     }
 
@@ -231,7 +236,7 @@ impl<'a> Lexer<'a> {
                 self.seek(1);
 
                 line += 1;
-                line_start = self.pos + 1;
+                line_start = self.pos;
                 
                 continue;
             }
@@ -247,6 +252,7 @@ impl<'a> Lexer<'a> {
                 '(' => Some(TokenKind::OpenParen),
                 ')' => Some(TokenKind::ClosedParen),
                 ';' => Some(TokenKind::Semicolon),
+                ',' => Some(TokenKind::Comma),
                 _ => None,
             };
 
@@ -268,10 +274,9 @@ impl<'a> Lexer<'a> {
 
             if current.is_ascii_digit() {
                 let start = self.pos;
-                expr = match self.consume_if(|c| !c.is_whitespace() && (c.is_ascii_digit() || c.is_identifier())) {
-                    Some(s) => s,
-                    None => "",
-                };
+                expr = self.consume_if(|c|
+                        !c.is_whitespace() && (c.is_ascii_digit() || c.is_identifier_first())
+                ).unwrap_or_else(|| "");
 
                 let column = start - line_start + 1;
 
@@ -289,13 +294,12 @@ impl<'a> Lexer<'a> {
                 continue;
             }
 
-            if current.is_identifier() {
+            if current.is_identifier_first() {
                 let start = self.pos;
 
-                expr = match &self.consume_if(|c| !c.is_whitespace() && c.is_identifier()) {
-                    Some(s) => s,
-                    None => "",
-                };
+                expr = self.consume_if(|c|
+                    !c.is_whitespace() && c.is_identifier_continue()
+                ).unwrap_or_else(|| "");
 
                 let column = start - line_start + 1;
 
@@ -311,6 +315,7 @@ impl<'a> Lexer<'a> {
 
                     continue;
                 }
+
 
                 if !expr.is_empty() {
                     result.push(Token::new(
@@ -375,7 +380,7 @@ mod tests {
         let mut lexer = Lexer::new();
 
         let tokens = lexer.tokenize("(()) {{
-                ;
+                ,;
          }}").unwrap_or_else(|e| panic_lexer_err(e));
 
         let expected_tokens = vec![
@@ -383,12 +388,30 @@ mod tests {
             Token::new(TokenKind::OpenParen,1, 2,"("),
             Token::new(TokenKind::ClosedParen,1, 3,")"),
             Token::new(TokenKind::ClosedParen,1, 4,")"),
+            Token::new(TokenKind::OpenBracket,1, 6,"{"),
+            Token::new(TokenKind::OpenBracket,1, 7,"{"),
 
-            Token::new(TokenKind::OpenParen,1, 6,"{"),
-            Token::new(TokenKind::OpenParen,1, 7,"{"),
-            Token::new(TokenKind::ClosedParen,2, 17,";"),
-            Token::new(TokenKind::ClosedParen,1, 4,"}"),
-            Token::new(TokenKind::ClosedParen,1, 4,"}"),
+            Token::new(TokenKind::Comma,2, 17,","),
+            Token::new(TokenKind::Semicolon,2, 18,";"),
+
+            Token::new(TokenKind::ClosedBracket,3, 10,"}"),
+            Token::new(TokenKind::ClosedBracket,3, 11,"}"),
+        ];
+
+        assert_eq!(tokens, expected_tokens);
+    }
+
+    #[test]
+    fn test_lexer_identifiers() {
+        let mut lexer = Lexer::new();
+
+        let tokens = lexer.tokenize("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890_ ABCDEFGHIJKLMNOPQRSTUVWXYabcdefghijklmnopqrstuvwxyzZ1234567890_ _ABCDEFGHIJKLMNOPQRSTUVWXYabcdefghijklmnopqrstuvwxyzZ1234567890 _abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890").unwrap_or_else(|e| panic_lexer_err(e));
+
+        let expected_tokens = vec![
+            Token::new(TokenKind::Identifier,1, 1,"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890_"),
+            Token::new(TokenKind::Identifier,1, 65,"ABCDEFGHIJKLMNOPQRSTUVWXYabcdefghijklmnopqrstuvwxyzZ1234567890_"),
+            Token::new(TokenKind::Identifier,1, 129,"_ABCDEFGHIJKLMNOPQRSTUVWXYabcdefghijklmnopqrstuvwxyzZ1234567890"),
+            Token::new(TokenKind::Identifier,1, 193,"_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"),
         ];
 
         assert_eq!(tokens, expected_tokens);

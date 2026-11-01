@@ -1,2 +1,1 @@
-Names:
-- Spice (.spice)
+Very nice language!
