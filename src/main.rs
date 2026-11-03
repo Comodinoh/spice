@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::fs::File;
+
 #[derive(Clone, Debug)]
 pub enum LexerError<'a> {
     UnknownToken(&'a str, usize, usize, String),
@@ -331,6 +334,40 @@ impl<'a> Lexer<'a> {
                 return Err(LexerError::UnknownToken(self.current_source, line, start - line_start + 1, String::from(expr)));
             }
 
+            if let Some(expr) = self.consume(2) {
+                let kind = expr.get_operator_kind();
+
+                if let Some(kind) = kind {
+                    result.push(Token::new(
+                        TokenKind::Operator(kind),
+                        line,
+                        (self.pos - 2) - line_start + 1,
+                        expr
+                    ));
+
+                    continue;
+                }
+
+                self.seek(-2);
+
+                if let Some(expr) = self.consume(1) {
+                    let kind = expr.get_operator_kind();
+
+                    if let Some(kind) = kind {
+                        result.push(Token::new(
+                            TokenKind::Operator(kind),
+                            line,
+                            (self.pos - 1) - line_start + 1,
+                            expr
+                        ));
+
+                        continue;
+                    }
+                }
+
+                self.seek(-1);
+            }
+
             self.seek(1);
         }
 
@@ -352,6 +389,11 @@ pub fn panic_lexer_err(err: LexerError) -> !{
     }
 }
 
+pub fn print_err(err: LexerError) -> !{
+    eprintln!("ERROR: {err:?}");
+    std::process::exit(1);
+}
+
 struct Parser {
     
 }
@@ -359,16 +401,37 @@ struct Parser {
 
 fn main() {
     let mut lexer = Lexer::new();
-    
-    let tokens: Vec<Token> = lexer.tokenize("proc main() {
-        a;
-        return 2;
-    }").unwrap_or_else(|e| { panic_lexer_err(e) });
 
+    let args = std::env::args();
+    let args: Vec<String> = args.filter(|arg| !arg.starts_with('-'))
+        .collect();
 
-    for token in tokens {
-        println!("{token:?}")
+    if args.len() < 2 {
+        eprintln!("Usage: {} <files>", args[0]);
+
+        std::process::exit(1);
     }
+
+    let filenames = args[1..].to_vec();
+    let mut file_contents: HashMap<String, String> = HashMap::with_capacity(filenames.len() + 1);
+
+    for filename in filenames {
+        file_contents.insert(filename.clone(), match std::fs::read_to_string(&filename) {
+            Ok(result) => result,
+            Err(e) => match e.kind() {
+                std::io::ErrorKind::NotFound => {eprintln!("File {filename} not found"); return}
+                _ => panic!("Error opening file {filename}: {e}")
+            }
+        });
+    }
+
+    for (name, content) in &file_contents {
+        let tokens = lexer.tokenize(&content)
+            .unwrap_or_else(|e| print_err(e));
+        println!("{name}: {tokens:#?}");
+    }
+
+
 }
 
 #[cfg(test)]
@@ -415,5 +478,45 @@ mod tests {
         ];
 
         assert_eq!(tokens, expected_tokens);
+
+        lexer.tokenize("1234567890abcdfghhijklm_").unwrap_err();
     }
+
+    #[test]
+    fn test_lexer_numbers() {
+        let mut lexer = Lexer::new();
+
+        let tokens = lexer.tokenize("1234567890 123456_7890").unwrap_or_else(|e| panic_lexer_err(e));
+
+        let expected_tokens = vec![
+            Token::new(TokenKind::IntegerLiteral,1, 1,"1234567890"),
+            Token::new(TokenKind::IntegerLiteral,1, 12,"123456_7890"),
+        ];
+
+        assert_eq!(tokens, expected_tokens);
+    }
+
+    #[test]
+    fn test_lexer_operators() {
+        let mut lexer = Lexer::new();
+
+        let tokens = lexer.tokenize("+-*/==!=<><=>=").unwrap_or_else(|e| panic_lexer_err(e));
+
+        let expected_tokens = vec![
+            Token::new(TokenKind::Operator(OperatorKind::Plus),1, 1,"+"),
+            Token::new(TokenKind::Operator(OperatorKind::Minus),1, 2,"-"),
+            Token::new(TokenKind::Operator(OperatorKind::Star),1, 3,"*"),
+            Token::new(TokenKind::Operator(OperatorKind::Slash),1, 4,"/"),
+            Token::new(TokenKind::Operator(OperatorKind::Equality),1, 5,"=="),
+            Token::new(TokenKind::Operator(OperatorKind::Inequality),1, 7,"!="),
+            Token::new(TokenKind::Operator(OperatorKind::Lesser),1, 9,"<"),
+            Token::new(TokenKind::Operator(OperatorKind::Greater),1, 10,">"),
+            Token::new(TokenKind::Operator(OperatorKind::LesserOrEqual),1, 11,"<="),
+            Token::new(TokenKind::Operator(OperatorKind::GreaterOrEqual),1, 13,">="),
+
+        ];
+
+        assert_eq!(tokens, expected_tokens);
+    }
+
 }
